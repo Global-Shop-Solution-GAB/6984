@@ -1,0 +1,85 @@
+﻿Program.Sub.Preflight.Start
+Program.Sub.Preflight.End
+'ARC 6984
+'Cus: ASC Capacitors
+'	Nov 2022, Nam Le
+
+
+'We will develop a program to populate and display a custom Crystal Report that will run from the Post-Process hook of the SFDC (GUI) and from the Pre-NCMR Create hook of the Create NCMR from Inventory screen (INVS220N)
+
+'This script link to hook 14762, to capture references for before print the custom report for NCMR from Inventory screen (INVS220N)
+
+'delete record for user from custom table when the screen is populated
+Program.Sub.Main.Start
+f.Intrinsic.Control.Try
+	v.Local.sSQL.Declare(String)
+	v.Local.sPO.Declare(String)
+	v.Local.sPOLine.Declare(String)
+	v.Local.sWO.Declare(String)
+	v.Local.sSuffix.Declare(String)
+	v.Local.sSEQ.Declare(String)
+	v.Local.sPart.Declare(String)
+	v.Local.sDate.Declare(String)
+	v.Local.sTime.Declare(String)
+	v.Local.dTimeLess5s.Declare(String)
+	
+	f.Intrinsic.Control.If(v.Caller.Hook,=,"14762")
+		'gather passed var 
+'		f.Intrinsic.Date.ConvertDString(v.Passed.000006,"YYYYMMDD", v.Local.dDate)
+'		f.Intrinsic.String.Format(v.Local.dDate, "YYYY-MM-DD", v.Local.sDate)
+'		f.Intrinsic.String.Right(v.Passed.000006, 6, v.Local.sDate)
+'		v.Local.sDate.Set(v.Passed.000006)
+		f.Intrinsic.String.Format(v.Ambient.Date, "YYYYMMDD", v.Local.sDate)
+		f.Intrinsic.Date.DateAdd("S", -5, v.Ambient.Now, v.Local.dTimeLess5s)
+		f.Intrinsic.String.Format(v.Local.dTimeLess5s, "HHNN0000", v.Local.sTime)
+		v.Local.sPart.Set(v.Passed.000010)
+		v.Local.sPO.Set(v.Passed.000001)
+		v.Local.sPOLine.Set(v.Passed.000002)
+		v.Local.sWO.Set(v.Passed.000022)
+		v.Local.sSuffix.Set(v.Passed.000037)
+		v.Local.sSEQ.Set(v.Passed.000051)
+		
+		'validate
+		f.Intrinsic.Control.If(v.Passed.000008,=,"")
+			f.Intrinsic.Control.End
+		f.Intrinsic.Control.EndIf
+		f.Intrinsic.Control.If(v.Local.sPO.Trim,=,"", "AND", v.Local.sWO.Trim,=,"")
+			f.Intrinsic.Control.End
+		f.Intrinsic.Control.EndIf
+		
+		
+		
+		'delete before insert
+		'insert
+		f.ODBC.Connection!Con.OpenCompanyConnection
+			f.Intrinsic.String.Build("delete from GCG_6984_PRE_PRINT where RTRIM(GS_USER)='{0}'", v.Caller.User, v.Local.sSQL)
+			f.ODBC.Connection!Con.Execute(v.Local.sSQL)
+			'create SQL
+			f.Intrinsic.Control.If(v.Local.sPO.Trim,!=,"")
+				f.Intrinsic.String.LPad(v.Local.sPO, "0", 7, v.Local.sPO)
+				f.Intrinsic.String.LPad(v.Local.sPOLine,"0", 3, v.Local.sPOLine)
+				f.Intrinsic.String.RPad(v.Local.sPOLine, "0", 4, v.Local.sPOLine)
+				f.Intrinsic.String.Build("insert into GCG_6984_PRE_PRINT (GS_USER,PO,PO_LINE, PRINT_DATE,PART,PRINT_TIME) values('{0}','{1}','{2}','{3}','{4}','{5}')", v.Caller.User, v.Local.sPO.PSQLFriendly, v.Local.sPOLine.PSQLFriendly, v.Local.sDate, v.Local.sPart.PSQLFriendly, v.Local.sTime, v.Local.sSQL)
+				
+			'reference WO
+			f.Intrinsic.Control.Else
+				f.Intrinsic.String.LPad(v.Local.sWO, "0", 6, v.Local.sWO)
+				f.Intrinsic.String.LPad(v.Local.sSuffix, "0", 3, v.Local.sSuffix)
+				f.Intrinsic.String.Build("insert into GCG_6984_PRE_PRINT (GS_USER,WO, SUFFIX, SEQ, PRINT_DATE,PART,PRINT_TIME) values('{0}','{1}','{2}','{3}','{4}','{5}','{6}')", v.Caller.User, v.Local.sWO.PSQLFriendly, v.Local.sSuffix.PSQLFriendly, v.Local.sSEQ, v.Local.sDate, v.Local.sPart.PSQLFriendly, v.Local.sTime, v.Local.sSQL)
+				
+			f.Intrinsic.Control.EndIf
+			f.ODBC.Connection!Con.Execute(v.Local.sSQL)
+		f.ODBC.Connection!Con.Close	
+		
+		
+		v.Local.sSQL.Set("ABC")
+	f.Intrinsic.Control.EndIf
+f.Intrinsic.Control.Catch
+	f.Intrinsic.UI.Msgbox(v.Ambient.ErrorDescription, "GCG 6984")
+f.Intrinsic.Control.EndTry
+Program.Sub.Main.End
+
+Program.Sub.Comments.Start
+${$5$}$3.0.0.0$}$1
+${$6$}$nle$}$20221205040632741$}$kjzCRYkA6UEoRnCwndYnRa7r7aoy0P3IaLKcGKKezycxUKo203oYnEQXrsq0Zjzd
+Program.Sub.Comments.End
