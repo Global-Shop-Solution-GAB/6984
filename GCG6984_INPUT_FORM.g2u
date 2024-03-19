@@ -1,0 +1,127 @@
+﻿Program.Sub.ScreenSU.Start
+Gui.Form..Create(BaseForm)
+Gui.Form..Caption("Extra Input")
+Gui.Form..Size(1081,607)
+Gui.Form..MinX(0)
+Gui.Form..MinY(0)
+Gui.Form..Position(0,0)
+Gui.Form..AlwaysOnTop(False)
+Gui.Form..FontName("Tahoma")
+Gui.Form..FontSize(8.25)
+Gui.Form..ControlBox(True)
+Gui.Form..MaxButton(True)
+Gui.Form..MinButton(True)
+Gui.Form..MousePointer(0)
+Gui.Form..Moveable(True)
+Gui.Form..Sizeable(False)
+Gui.Form..ShowInTaskBar(True)
+Gui.Form..TitleBar(True)
+Gui.Form..Event(UnLoad,Form_UnLoad)
+Gui.Form.pic1.Create(PictureBox)
+Gui.Form.pic1.Enabled(True)
+Gui.Form.pic1.Visible(True)
+Gui.Form.pic1.Zorder(0)
+Gui.Form.pic1.Size(1071,509)
+Gui.Form.pic1.Position(4,6)
+Gui.Form.pic1.SizeMode(1)
+Gui.Form.txtLog.Create(TextBox,"",True,122,22,0,862,96,True,0,"Tahoma",10,,1)
+Gui.Form.txtSpec.Create(TextBox,"",True,196,22,0,521,299,True,0,"Tahoma",10,,1)
+Gui.Form.txtRevision.Create(TextBox,"",True,93,22,0,871,301,True,0,"Tahoma",10,,1)
+Gui.Form.txtComments.Create(TextBox,"",True,939,22,0,66,420,True,0,"Tahoma",10,,1)
+Gui.Form.cmdSave.Create(Button)
+Gui.Form.cmdSave.Enabled(True)
+Gui.Form.cmdSave.Visible(True)
+Gui.Form.cmdSave.Zorder(0)
+Gui.Form.cmdSave.Size(75,23)
+Gui.Form.cmdSave.Position(363,542)
+Gui.Form.cmdSave.Caption("SAVE")
+Gui.Form.cmdSave.FontName("Tahoma")
+Gui.Form.cmdSave.FontSize(8.25)
+Gui.Form.cmdSave.Event(Click,cmdSave_Click)
+Gui.Form.cmdExit.Create(Button)
+Gui.Form.cmdExit.Enabled(True)
+Gui.Form.cmdExit.Visible(True)
+Gui.Form.cmdExit.Zorder(0)
+Gui.Form.cmdExit.Size(75,23)
+Gui.Form.cmdExit.Position(618,542)
+Gui.Form.cmdExit.Caption("EXIT")
+Gui.Form.cmdExit.FontName("Tahoma")
+Gui.Form.cmdExit.FontSize(8.25)
+Gui.Form.cmdExit.Event(Click,Form_UnLoad)
+Program.Sub.ScreenSU.End
+
+Program.Sub.Preflight.Start
+Program.Sub.Preflight.End
+'ARC 6984
+'Cus: ASC Capacitors
+'	Nov 2022, Nam Le
+
+
+'We will develop a program to populate and display a custom Crystal Report that will run from the Post-Process hook of the SFDC (GUI) and from the Pre-NCMR Create hook of the Create NCMR from Inventory screen (INVS220N)
+
+'This script link to Script 1 button on Create NCMR from Inventory screen
+'14764 Script 1 btn
+
+'record inputs and save to custom table by User
+
+Program.Sub.Main.Start
+f.Intrinsic.Control.Try
+	v.Local.sPic.Declare(String)
+	v.Local.sSQL.Declare(String)
+	
+	Function.Intrinsic.UI.UsePixels ' Allows you to use Pixels instead of Twips throughout
+		
+	f.Intrinsic.Control.If(v.Caller.Hook, =, "14764")
+		f.Intrinsic.String.Build("{0}\{1}", v.Caller.GlobalDir, "\CUSTOM\6984\INP_FORM.JPG", v.Local.sPic)
+		gui.Form.pic1.Picture(v.Local.sPic)
+		
+		'delete old record
+'		f.ODBC.Connection!Con.OpenCompanyConnection
+'			f.Intrinsic.String.Build("delete from GCG_6984_INV_FORM where RTRIM(GS_USER)='{0}'", v.Caller.User, v.Local.sSQL)
+'			f.ODBC.Connection!Con.Execute(v.Local.sSQL)
+'		f.ODBC.Connection!Con.Close
+		
+		gui.Form..Show
+	f.Intrinsic.Control.EndIf
+f.Intrinsic.Control.Catch
+	f.Intrinsic.UI.Msgbox(v.Ambient.ErrorDescription, "GCG 6984")
+f.Intrinsic.Control.EndTry
+
+Program.Sub.Main.End
+
+Program.Sub.Form_UnLoad.Start
+f.Intrinsic.Control.End
+Program.Sub.Form_UnLoad.End
+
+'cmd SAVE
+Program.Sub.cmdSave_Click.Start
+f.Intrinsic.Control.Try
+	v.Local.sLog.Declare(String)
+	v.Local.sRev.Declare(String)
+	v.Local.sSpec.Declare(String)
+	v.Local.sComments.Declare(String)
+	v.Local.sSQL.Declare(String)
+	
+	v.Local.sLog.Set(v.Screen.Form!txtLog.Text)
+	v.Local.sRev.Set(v.Screen.Form!txtRevision.Text)
+	v.Local.sSpec.Set(v.Screen.Form!txtSpec.Text)
+	v.Local.sComments.Set(v.Screen.Form!txtComments.Text)
+	
+	f.ODBC.Connection!Con.OpenCompanyConnection
+			f.Intrinsic.String.Build("delete from GCG_6984_INV_FORM where RTRIM(GS_USER)='{0}'", v.Caller.User, v.Local.sSQL)
+			f.ODBC.Connection!Con.Execute(v.Local.sSQL)
+			f.Intrinsic.String.Build("insert into GCG_6984_INV_FORM (GS_USER,CM_LOG,SPEC,REVISION,COMMENTS) values ('{0}','{1}','{2}','{3}','{4}')", v.Caller.User, v.Local.sLog.PSQLFriendly, v.Local.sSpec.PSQLFriendly, v.Local.sRev.PSQLFriendly, v.Local.sComments.PSQLFriendly, v.Local.sSQL)
+			f.ODBC.Connection!Con.Execute(v.Local.sSQL)
+	f.ODBC.Connection!Con.Close
+	
+	f.Intrinsic.UI.Msgbox("SAVE")
+	
+f.Intrinsic.Control.Catch
+	f.Intrinsic.UI.Msgbox(v.Ambient.ErrorDescription, "GCG 6984")
+f.Intrinsic.Control.EndTry
+Program.Sub.cmdSave_Click.End
+
+Program.Sub.Comments.Start
+${$5$}$3.0.0.0$}$1
+${$6$}$nle$}$20221205035403065$}$kjzCRYkA6UEoRnCwndYnRa7r7aoy0P3I+7H6+RTjpRVx8YCdpseH4oYNfHXETurf
+Program.Sub.Comments.End
