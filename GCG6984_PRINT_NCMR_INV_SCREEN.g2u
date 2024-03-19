@@ -1,0 +1,230 @@
+﻿Program.Sub.Preflight.Start
+Program.Sub.Preflight.End
+'ARC 6984
+'Cus: ASC Capacitors
+'	Nov 2022, Nam Le
+
+
+'We will develop a program to populate and display a custom Crystal Report that will run from the Post-Process hook of the SFDC (GUI) and from the Pre-NCMR Create hook of the Create NCMR from Inventory screen (INVS220N)
+
+'This script link to hook 14762, to print the custom report for NCMR from Inventory screen (INVS220N)
+'swith to post create hook 14763
+'	check for reference by PO Line or WO SEQ, USER and PROGRAM in the QUALITY table itself
+
+'delete record for user from custom table when the screen is populated
+
+Program.Sub.Main.Start
+f.Intrinsic.Control.Try
+	v.Local.sSQL.Declare(String)
+	v.Local.sTimeStamp.Declare(String)
+	v.Local.dTime5s.Declare(String)
+	
+	v.Local.sEmpName.Declare(String)
+	v.Local.sQualityNo.Declare(String)
+	v.Local.sGoodPcs.Declare(String)
+	v.Local.fBadPcs.Declare(Float)
+	v.Local.fTotalPcs.Declare(Float)
+	v.Local.fUnitCost.Declare(Float)
+	v.Local.fRejectCost.Declare(Float)
+	v.Local.sComments.Declare(String)
+	v.Local.sRejectCode.Declare(String)
+	v.Local.sPart.Declare(String)
+	v.Local.sPartDesc.Declare(String)
+	v.Local.sJSS.Declare(String)
+	v.Local.sWO.Declare(String)
+	v.Local.sSuffix.Declare(String)
+	v.Local.sSEQ.Declare(String)
+	v.Local.sSO.Declare(String)
+	v.Local.sCustOrSupplier.Declare(String)
+	v.Local.sReason.Declare(String)
+	v.Local.sWC.Declare(String)
+	v.Local.sScrapRef.Declare(String)
+	v.Local.sRet.Declare(String)
+	v.Local.iCount.Declare(Long)
+	v.Local.sFields.Declare(String)
+	v.Local.sFieldVals.Declare(String)
+	v.Local.sFolder.Declare(String)
+	v.Local.sFile.Declare(String)
+	v.Local.sSaveFile.Declare(String)
+	v.Local.bExist.Declare(String)
+	v.Local.sComplaintLog.Declare(String)
+	v.Local.sRevision.Declare(String)
+	v.Local.sSpec.Declare(String)
+	v.Local.sPO.Declare(String)
+	v.Local.sPO_Line.Declare(String)
+	v.Local.sPrintDate.Declare(String)
+	v.Local.sPrintTime.Declare(String)
+	
+	f.Intrinsic.Control.If(v.Caller.Hook,=,"14763")
+'		f.Intrinsic.Date.DateAdd("S", -30, v.Ambient.Now, v.Local.dTime5s)
+'		f.Intrinsic.String.Format(v.Local.dTime5s, "HHNNSS00", v.Local.sTimeStamp)
+'		
+'		f.Intrinsic.String.Build("select CONTROL_NUMBER from QUALITY Q left join GCG_6984_PRE_PRINT R on Q.DATE_QUALITY = R.PRINT_DATE and RTRIM(Q.PART) = RTRIM(R.PART) and RTRIM(Q.ORIGINATOR) = RTRIM(R.GS_USER) where RTRIM(R.GS_USER) = '{0}' and Q.TIME_ENTERED >= '{1}'", v.Caller.User, v.Local.sTimeStamp, v.Local.sSQL)
+		
+		'select CONTROL_NUMBER from QUALITY Q left join GCG_6984_PRE_PRINT R on Q.DATE_QUALITY = R.PRINT_DATE and RTRIM(Q.PART) = RTRIM(R.PART) and RTRIM(Q.ORIGINATOR) = RTRIM(R.GS_USER) where RTRIM(R.GS_USER) = 'SUPERVSR'
+		
+		
+		f.ODBC.Connection!Con.OpenCompanyConnection
+			'pre
+			'---------------------------------------------------
+			f.Intrinsic.String.Build("select top 1 RTRIM(CM_LOG), RTRIM(SPEC), RTRIM(REVISION), RTRIM(COMMENTS) from GCG_6984_INV_FORM where RTRIM(GS_USER)='{0}'", v.Caller.User, v.Local.sSQL)
+			f.ODBC.Connection!Con.ExecuteAndReturn(v.Local.sSQL, v.Local.sRet)
+			f.Intrinsic.Control.If(v.Ambient.ExecuteAndReturnEOF,=,False)
+				f.Intrinsic.String.Split(v.Local.sRet, "*!*", v.Local.sRet)
+				v.Local.sComplaintLog.Set(v.Local.sRet(0))
+				v.Local.sSpec.Set(v.Local.sRet(1))
+				v.Local.sRevision.Set(v.Local.sRet(2))
+				v.Local.sComments.Set(v.Local.sRet(3))
+			f.Intrinsic.Control.EndIf
+			
+			f.Global.Security.GetFullName(v.Caller.User, v.Caller.CompanyCode, v.Local.sEmpName)
+			
+			'folder
+			f.Intrinsic.String.Build("{0}/CUSTOM/{1}", v.Caller.GlobalDir, "6984", v.Local.sFolder)
+			f.Intrinsic.File.DirExists(v.Local.sFolder, v.Local.bExist)
+			f.Intrinsic.Control.If(v.Local.bExist,=,False)
+				f.Intrinsic.File.CreateDir(v.Local.sFolder)
+			f.Intrinsic.Control.EndIf
+			
+			v.Local.sFields.Set("DATE*!*ORIGINATOR*!*COMPLAINT_LOG*!*ITEM*!*DESCRIPTION*!*QTY_RECEIVED*!*QTY_REJECT*!*LOT_ID*!*ASC_ORDER*!*UNIT_COST*!*TOTAL_COST*!*CUST_SUPPLIER*!*SPEC*!*REVISION*!*QUALITY_NO*!*REJECT_CODE*!*COMMENTS*!*AREA")
+				
+			'---------------------------------------------------
+		
+		
+			f.Intrinsic.String.Build("select top 1 RTRIM(PO) from GCG_6984_PRE_PRINT where RTRIM(GS_USER)='{0}'", v.Caller.User, v.Local.sSQL)
+			f.ODBC.Connection!Con.ExecuteAndReturn(v.Local.sSQL, v.Local.sRet)
+			
+			
+			'if PO exists, reference PO
+			'---------------------------------------------------
+			f.Intrinsic.Control.If(v.Local.sRet,!=,"")
+				f.Intrinsic.String.Build("select top 1  RTRIM(PO), RTRIM(PO_LINE), RTRIM(PART), RTRIM(PRINT_DATE), RTRIM(PRINT_TIME) from GCG_6984_PRE_PRINT where RTRIM(GS_USER)='{0}'", v.Caller.User, v.Local.sSQL)
+				f.ODBC.Connection!Con.ExecuteAndReturn(v.Local.sSQL, v.Local.sRet)
+				f.Intrinsic.String.Split(v.Local.sRet, "*!*", v.Local.sRet)
+				v.Local.sPO.Set(v.Local.sRet(0))
+				v.Local.sPO_Line.Set(v.Local.sRet(1))
+				v.Local.sPart.Set(v.Local.sRet(2))
+				v.Local.sPrintDate.Set(v.Local.sRet(3))
+				v.Local.sPrintTime.Set(v.Local.sRet(4))
+				
+				f.Intrinsic.String.Build("select RTRIM(Q.CONTROL_NUMBER) QUALITY, RTRIM(Q.NAME) CUSTVENDOR, RTRIM(Q.PART) PART, RTRIM(I.DESCRIPTION) PART_DESC, Q.WORKCENTER, RTRIM(Q.PURCHASE_ORDER)+'-'+RTRIM(Q.PO_LINE) PO_REF, Q.QTY_REJECTED, RTRIM(Q.SCRAP_CODE)+'-'+RTRIM(B.DESCR) REJECTED_CODE, I.AMT_COST UNIT_COST, Q.QTY_REJECTED * I.AMT_COST as TOTAL_COST, RTRIM(WORKCENTER) WC from QUALITY Q left join V_INVENTORY_MSTR I on RTRIM(I.PART) = RTRIM(Q.PART) and Q.LOCATION = I.LOCATION left join REJECTED_CODE B on RTRIM(Q.SCRAP_CODE) = RTRIM(B.CODE) where RTRIM(Q.PURCHASE_ORDER)='{0}' and RTRIM(Q.PO_LINE)='{1}' and Q.DATE_ENTERED='{2}' and Q.TIME_ENTERED >= '{3}' and RTRIM(Q.ORIGINATOR)='{4}' and RTRIM(Q.PART) like '%{5}%'", v.Local.sPO, v.Local.sPO_Line, v.Local.sPrintDate, v.Local.sPrintTime, v.Caller.User, v.Local.sPart, v.Local.sSQL)
+				
+				f.Intrinsic.Control.If(v.DataTable.dtScrap.Exists)
+					f.Data.DataTable.Close("dtScrap")
+				f.Intrinsic.Control.EndIf
+				
+				f.Data.DataTable.CreateFromSQL("dtScrap", "con", v.Local.sSQL, True)
+				
+				f.Intrinsic.Control.If(v.DataTable.dtScrap.RowCount,>,0)
+					'loop and print each records
+					f.Intrinsic.Control.For(v.Local.iCount, 0, v.DataTable.dtScrap.RowCount--,1)
+						v.Local.sQualityNo.Set(v.DataTable.dtScrap(v.Local.iCount).QUALITY!FieldValTrim)
+						v.Local.sRejectCode.Set(v.DataTable.dtScrap(v.Local.iCount).REJECTED_CODE!FieldValTrim)
+						v.Local.fBadPcs.Set(v.DataTable.dtScrap(v.Local.iCount).QTY_REJECTED!FieldVal)
+						v.Local.fRejectCost.Set(v.DataTable.dtScrap(v.Local.iCount).TOTAL_COST!FieldVal)
+						v.Local.sPartDesc.Set(v.DataTable.dtScrap(v.Local.iCount).PART_DESC!FieldValTrim)
+						v.Local.sJSS.Set(v.DataTable.dtScrap(v.Local.iCount).PO_REF!FieldValTrim)
+						v.Local.fUnitCost.Set(v.DataTable.dtScrap(v.Local.iCount).UNIT_COST!FieldVal)
+						v.Local.sCustOrSupplier.Set(v.DataTable.dtScrap(v.Local.iCount).CUSTVENDOR!FieldValTrim)
+						v.Local.sWC.Set(v.DataTable.dtScrap(v.Local.iCount).WC!FieldValTrim)
+						
+			'			v.Local.sFields.Set("DATE*!*ORIGINATOR*!*COMPLAINT_LOG*!*ITEM*!*DESCRIPTION*!*QTY_RECEIVED*!*QTY_REJECT*!*LOT_ID*!*ASC_ORDER*!*UNIT_COST*!*TOTAL_COST*!*CUST_SUPPLIER*!*SPEC*!*REVISION*!*QUALITY_NO*!*REJECTED_CODE*!*COMMENTS")
+						
+						f.Intrinsic.String.Build("{0}*!*{1}*!*{2}*!*{3}*!*{4}*!*{5}*!*{6}*!*{7}*!*{8}*!*${9}*!*${10}*!*{11}*!*{12}*!*{13}*!*{14}*!*{15}*!*{16}*!*{17}", v.Ambient.Date.FormatMM/DD/YYYY, v.Local.sEmpName, v.Local.sComplaintLog, v.Local.sPart, v.Local.sPartDesc, v.Local.fTotalPcs, v.Local.fBadPcs, v.Local.sJSS, v.Local.sSO, v.Local.fUnitCost, v.Local.fRejectCost, v.Local.sCustOrSupplier, v.Local.sSpec, v.Local.sRevision, v.Local.sQualityNo, v.Local.sRejectCode, v.Local.sComments, v.Local.sWC, v.Local.sFieldVals)
+						
+						
+												'replace special char
+						f.Intrinsic.String.Replace(v.Local.sPart,"/", "", v.Local.sPart)
+						f.Intrinsic.String.Replace(v.Local.sPart, ",", "", v.Local.sPart)
+						f.Intrinsic.String.Build("{0}/{1}_{2}.PDF", v.Local.sFolder, v.Local.sPart, v.Local.sQualityNo, v.Local.sSaveFile)
+						
+						f.Intrinsic.String.Build("{0}/{1}.PDF", v.Local.sFolder, "ORG_TEMPLATE", v.Local.sFile)
+						
+						Function.Automation.PDF.Open("MyPDF",v.Local.sFile)
+						Function.Automation.PDF.SetFormFields("MyPDF", v.Local.sSaveFile, v.Local.sFields, v.Local.sFieldVals, True)
+						Function.Automation.PDF.Close("MyPDF")
+						
+					f.Intrinsic.Control.Next(v.Local.iCount)
+				f.Intrinsic.Control.EndIf
+			'---------------------------------------------------
+				
+				
+				
+				
+			'PO not exist, reference WO
+			'---------------------------------------------------
+			f.Intrinsic.Control.Else
+				f.Intrinsic.String.Build("select top 1  RTRIM(WO), RTRIM(SUFFIX), RTRIM(SEQ), RTRIM(PART), RTRIM(PRINT_DATE), RTRIM(PRINT_TIME) from GCG_6984_PRE_PRINT where RTRIM(GS_USER)='{0}'", v.Caller.User, v.Local.sSQL)
+				f.ODBC.Connection!Con.ExecuteAndReturn(v.Local.sSQL, v.Local.sRet)
+				f.Intrinsic.String.Split(v.Local.sRet, "*!*", v.Local.sRet)
+				v.Local.sWO.Set(v.Local.sRet(0))
+				v.Local.sSuffix.Set(v.Local.sRet(1))
+				v.Local.sSEQ.Set(v.Local.sRet(2))
+				f.Intrinsic.String.LPad(v.Local.sSEQ,"0",6,v.Local.sSEQ)
+				v.Local.sPart.Set(v.Local.sRet(3))
+				v.Local.sPrintDate.Set(v.Local.sRet(4))
+				v.Local.sPrintTime.Set(v.Local.sRet(5))
+				
+				f.Intrinsic.String.Build("select RTRIM(Q.CONTROL_NUMBER) QUALITY, RTRIM(Q.NAME) CUSTVENDOR, RTRIM(Q.PART) PART, RTRIM(I.DESCRIPTION) PART_DESC, Q.WORKCENTER, RTRIM(Q.JOB)+'-'+RTRIM(Q.SUFFIX)+'-'+RTRIM(Q.SEQUENCE) PO_REF, Q.QTY_REJECTED, RTRIM(Q.SCRAP_CODE)+'-'+RTRIM(B.DESCR) REJECTED_CODE, I.AMT_COST UNIT_COST, Q.QTY_REJECTED * I.AMT_COST as TOTAL_COST, RTRIM(WORKCENTER) WC from QUALITY Q left join V_INVENTORY_MSTR I on RTRIM(I.PART) = RTRIM(Q.PART) and Q.LOCATION = I.LOCATION left join REJECTED_CODE B on RTRIM(Q.SCRAP_CODE) = RTRIM(B.CODE) where RTRIM(Q.JOB)='{0}' and RTRIM(Q.SUFFIX)='{1}' and RTRIM(Q.SEQUENCE)='{2}' and Q.DATE_ENTERED='{3}' and Q.TIME_ENTERED >= '{4}' and RTRIM(Q.ORIGINATOR)='{5}' and RTRIM(Q.PART) like '%{6}%'", v.Local.sWO.PSQLFriendly, v.Local.sSuffix.PSQLFriendly, v.Local.sSEQ, v.Local.sPrintDate, v.Local.sPrintTime, v.Caller.User, v.Local.sPart.PSQLFriendly, v.Local.sSQL)
+				
+				f.Intrinsic.Control.If(v.DataTable.dtScrap.Exists)
+					f.Data.DataTable.Close("dtScrap")
+				f.Intrinsic.Control.EndIf
+				
+				f.Data.DataTable.CreateFromSQL("dtScrap", "con", v.Local.sSQL, True)
+				
+				f.Intrinsic.Control.If(v.DataTable.dtScrap.RowCount,>,0)
+					'loop and print each records
+					f.Intrinsic.Control.For(v.Local.iCount, 0, v.DataTable.dtScrap.RowCount--,1)
+						v.Local.sQualityNo.Set(v.DataTable.dtScrap(v.Local.iCount).QUALITY!FieldValTrim)
+						v.Local.sRejectCode.Set(v.DataTable.dtScrap(v.Local.iCount).REJECTED_CODE!FieldValTrim)
+						v.Local.fBadPcs.Set(v.DataTable.dtScrap(v.Local.iCount).QTY_REJECTED!FieldVal)
+						v.Local.fRejectCost.Set(v.DataTable.dtScrap(v.Local.iCount).TOTAL_COST!FieldVal)
+						v.Local.sPartDesc.Set(v.DataTable.dtScrap(v.Local.iCount).PART_DESC!FieldValTrim)
+						v.Local.sJSS.Set(v.DataTable.dtScrap(v.Local.iCount).PO_REF!FieldValTrim)
+						v.Local.fUnitCost.Set(v.DataTable.dtScrap(v.Local.iCount).UNIT_COST!FieldVal)
+						v.Local.sCustOrSupplier.Set(v.DataTable.dtScrap(v.Local.iCount).CUSTVENDOR!FieldValTrim)
+						v.Local.sWC.Set(v.DataTable.dtScrap(v.Local.iCount).WC!FieldValTrim)
+						
+			'			v.Local.sFields.Set("DATE*!*ORIGINATOR*!*COMPLAINT_LOG*!*ITEM*!*DESCRIPTION*!*QTY_RECEIVED*!*QTY_REJECT*!*LOT_ID*!*ASC_ORDER*!*UNIT_COST*!*TOTAL_COST*!*CUST_SUPPLIER*!*SPEC*!*REVISION*!*QUALITY_NO*!*REJECTED_CODE*!*COMMENTS")
+						
+						f.Intrinsic.String.Build("{0}*!*{1}*!*{2}*!*{3}*!*{4}*!*{5}*!*{6}*!*{7}*!*{8}*!*${9}*!*${10}*!*{11}*!*{12}*!*{13}*!*{14}*!*{15}*!*{16}*!*{17}", v.Ambient.Date.FormatMM/DD/YYYY, v.Local.sEmpName, v.Local.sComplaintLog, v.Local.sPart, v.Local.sPartDesc, v.Local.fTotalPcs, v.Local.fBadPcs, v.Local.sJSS, v.Local.sSO, v.Local.fUnitCost, v.Local.fRejectCost, v.Local.sCustOrSupplier, v.Local.sSpec, v.Local.sRevision, v.Local.sQualityNo, v.Local.sRejectCode, v.Local.sComments, v.Local.sWC, v.Local.sFieldVals)
+						
+						
+						'replace special char
+						f.Intrinsic.String.Replace(v.Local.sPart,"/", "", v.Local.sPart)
+						f.Intrinsic.String.Replace(v.Local.sPart, ",", "", v.Local.sPart)
+						f.Intrinsic.String.Build("{0}/{1}_{2}.PDF", v.Local.sFolder, v.Local.sPart, v.Local.sQualityNo, v.Local.sSaveFile)
+						
+
+						
+						
+						f.Intrinsic.String.Build("{0}/{1}.PDF", v.Local.sFolder, "ORG_TEMPLATE", v.Local.sFile)
+						
+						Function.Automation.PDF.Open("MyPDF",v.Local.sFile)
+						Function.Automation.PDF.SetFormFields("MyPDF", v.Local.sSaveFile, v.Local.sFields, v.Local.sFieldVals, True)
+						Function.Automation.PDF.Close("MyPDF")
+						
+					f.Intrinsic.Control.Next(v.Local.iCount)
+				f.Intrinsic.Control.EndIf
+			f.Intrinsic.Control.EndIf
+			'---------------------------------------------------
+
+
+
+		f.ODBC.Connection!Con.Close
+		
+'		f.Intrinsic.Control.If(v.DataTable.dtScrap.RowCount,>,0)
+'			f.Intrinsic.UI.Msgbox("YES")
+'		f.Intrinsic.Control.EndIf
+		
+	f.Intrinsic.Control.EndIf
+f.Intrinsic.Control.Catch
+	f.Intrinsic.UI.Msgbox(v.Ambient.ErrorDescription, "GCG 6984")
+f.Intrinsic.Control.EndTry
+Program.Sub.Main.End
+
+Program.Sub.Comments.Start
+${$5$}$3.0.0.0$}$1
+${$6$}$nle$}$20221208093257968$}$kjzCRYkA6UEoRnCwndYnRa7r7aoy0P3I6icTudp7mf9Q7dRQ18zSXFU8Y6+07iSK
+Program.Sub.Comments.End
