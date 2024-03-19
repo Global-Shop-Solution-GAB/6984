@@ -1,0 +1,33 @@
+﻿Program.Sub.Preflight.Start
+Program.Sub.Preflight.End
+
+'ARC 6984
+'Cus: ASC Capacitors
+'	Nov 2022, Nam Le
+
+
+'We will develop a program to populate and display a custom Crystal Report that will run from the Post-Process hook of the SFDC (GUI) and from the Pre-NCMR Create hook of the Create NCMR from Inventory screen (INVS220N)
+'14761 populate form
+'delete old/current INV form
+
+Program.Sub.Main.Start
+f.Intrinsic.Control.Try
+	v.Local.sSQL.Declare(String)
+	f.Intrinsic.Control.If(v.Caller.Hook,=,"14761")
+	
+		v.Passed.000019.Set("Add Comments")
+		
+		f.Intrinsic.String.Build("delete from GCG_6984_INV_FORM where RTRIM(GS_USER)='{0}'", v.Caller.User, v.Local.sSQL)
+		f.ODBC.Connection!Con.OpenCompanyConnection
+		f.ODBC.Connection!Con.Execute(v.Local.sSQL)
+		f.ODBC.Connection!Con.Close
+	f.Intrinsic.Control.EndIf
+f.Intrinsic.Control.Catch
+	f.Intrinsic.UI.Msgbox(v.Ambient.ErrorDescription, "GCG 6984")
+f.Intrinsic.Control.EndTry
+Program.Sub.Main.End
+
+Program.Sub.Comments.Start
+${$5$}$3.0.0.0$}$1
+${$6$}$nle$}$20221206023642693$}$kjzCRYkA6UEoRnCwndYnRa7r7aoy0P3IG4xlwCvGrEiv5qYEu77kJbG3hrDsTX8i
+Program.Sub.Comments.End
